@@ -36,7 +36,8 @@ int main(int argc, char *argv[])
                   "\nDeveloper: Advait Balaji (advait@rice.edu)\n"
                   "\n"
                   "***Diversify and subsample reads into a stew!***\n"
-                  "\n\nUsage stew [Subcommand] [options] [read.*|read1.*|read2.*] [out.*...]\n"
+                  "\n\nUsage stew [Subcommand] [options] [input.*|input1.*|input2.*] "
+                  "[out.*...]\n"
                   "Subcommands:\n"
                   "\tS - Single end read mode\n"
                   "\tP - Paired end read mode\n"
@@ -50,9 +51,9 @@ int main(int argc, char *argv[])
                   "\n"
                   "Subcommand postitional options:\n"
                   "\tS\n"
-                  "\t\tS [read.*] [out.*]\n"
+                  "\t\tS [input.*] [out.*]\n"
                   "\tP\n"
-                  "\t\tP [read1.*] [read2.*] [out1.*] [out2.*]\n"
+                  "\t\tP [input1.*] [input2.*] [out1.*] [out2.*]\n"
                   "\n";
 
     // set logging
@@ -64,8 +65,9 @@ int main(int argc, char *argv[])
 
     // argument parsing
     ketopt_t om = KETOPT_INIT, os = KETOPT_INIT;
-    int i, c;
-    int t,p,k;
+    int i, j, c;
+    char *sf[2], *pf[4];
+    uint16_t  t,p,k;
     while ((c = ketopt(&om, argc, argv, 0, "tpkv:", main_longopts)) >= 0)
     {
         if (c == 't')
@@ -102,9 +104,39 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    fprintf("%u", argc-(os.ind+om.ind));
-    for (i = os.ind + om.ind; i < argc; ++i)
-        fprintf("%s\n", argv[i]);
+
+    if (!strcmp(sub,"S"))
+    {
+        if (argc - (os.ind + om.ind) != 2)
+        {
+            log_error("Positional arguments should (only) include "
+                      " input.* and output.*");
+            log_info(usage);
+            return 1;
+        }
+
+        for (i = os.ind + om.ind, j = 0; i < argc; ++i, ++j)
+        {
+            sf[i] = malloc(strlen(argv[i]) + 1);
+            strcpy(sf[i],argv[i]);
+        }
+    }
+    else
+    {
+        if (argc - (os.ind + om.ind) != 4)
+        {
+            log_error("Positional arguments should (only) include "
+                      "input1.* input2.* out1.* out2.*");
+            log_info(usage);
+            return 1;
+        }
+        for (i = os.ind + om.ind, j = 0; i < argc; ++i, ++j)
+        {
+            pf[i] = malloc(strlen(argv[i]) + 1);
+            strcpy(pf[i],argv[i]);
+        }
+
+    }
 
 
     // check if subcommand valid
