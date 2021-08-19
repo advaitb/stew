@@ -36,7 +36,7 @@ void log_setup(const char* fname, int f_log_lvl, int c_log_lvl)
     log_add_fp(lfp,f_log_lvl);
 }
 
-void stew_write_se(kseq_t *seq, bool is_fastq, FILE *sfp_o)
+void stew_write(kseq_t *seq, bool is_fastq, FILE *sfp_o)
 {
     if (is_fastq)
     {
@@ -52,28 +52,6 @@ void stew_write_se(kseq_t *seq, bool is_fastq, FILE *sfp_o)
     }
 }
 
-void stew_write_pe(kseq_t *seq1, kseq_t *seq2, bool is_fastq, FILE *pfp1_o, FILE *pfp2_o)
-{
-    if (is_fastq)
-    {
-        fprintf(pfp1_o, "@%s %s\n", seq1->name.s, seq1->comment.s);
-        fprintf(pfp1_o, "%s\n", seq1->seq1.s);
-        fprintf(pfp1_o, "+\n");
-        fprintf(pfp1_o, "%s\n", seq1->qual.s);
-        fprintf(pfp2_o, "@%s %s\n", seq2->name.s, seq2->comment.s);
-        fprintf(pfp2_o, "%s\n", seq2->seq2.s);
-        fprintf(pfp2_o, "+\n");
-        fprintf(pfp2_o, "%s\n", seq2->qual.s);
-    }
-    else
-    {
-        fprintf(pfp1_o, "@%s %s\n", seq1->name.s, seq1->comment.s);
-        fprintf(pfp1_o, "%s\n", seq1->seq1.s);
-        fprintf(pfp2_o, "@%s %s\n", seq2->name.s, seq2->comment.s);
-        fprintf(pfp2_o, "%s\n", seq2->seq2.s);
-    }
-
-}
 
 int main(int argc, char *argv[])
 {
@@ -261,7 +239,7 @@ int main(int argc, char *argv[])
                 char *kmer = (char *)malloc(sizeof(char)*k+1);
                 strncpy(kmer, seq->seq.s+_s, k);
                 kmer[k] = '\0';
-                fprintf(stderr,"%s\n", kmer);
+                fprintf(stderr,"%c\n", kmer[k-1]);
                 if (!(_s % _nk)) _p++;
                 //char *test = "ADBCCAAFOTNFNGFFHHJYRFA";
                 hll_add(hll[_p], kmer, k);
