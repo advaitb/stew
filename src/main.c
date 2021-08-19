@@ -203,7 +203,6 @@ int main(int argc, char *argv[])
     // create hll arrays
     hll_t *hll[p];
 
-    #pragma omp parallel for
     for (int i = 0; i < p; i++)
     {
         hll[i] = hll_create(c);
@@ -239,25 +238,22 @@ int main(int argc, char *argv[])
             for (int _s = 0; _s < _effk; _s++)
             {
                 char *kmer = (char *)malloc(sizeof(char)*k);
-                strncpy(kmer,seq->seq.s+_s,k);
+                strncpy(kmer, seq->seq.s+_s, k);
                 if (!(_s % _nk)) _p++;
                 hll_add(hll[_p], kmer, k);
             }
 
             for (int i = 0; i < p; i++)
             {
-
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
-                //fprintf(stderr, "%d", curr_cnt[i]-prev_cnt[i]);
             }
 
             for (int i = 0; i < p; i++)
             {
                 prev_cnt[i] = curr_cnt[i];
             }
-            fprintf(stderr,"\n\n\n");
 
             //fprintf(stdout,"name: %s\n", seq->name.s);
             //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
@@ -279,8 +275,7 @@ int main(int argc, char *argv[])
     }
 
 
-    log_debug("Cups and Platters emptied successfully!...");
-
-
+    log_info("Cups and Platters emptied successfully!...");
+    
     return 0;
 }
