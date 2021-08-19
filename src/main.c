@@ -36,19 +36,19 @@ void log_setup(const char* fname, int f_log_lvl, int c_log_lvl)
     log_add_fp(lfp,f_log_lvl);
 }
 
-void stew_write(kseq_t *seq, bool is_fastq, FILE *sfp_o)
+void stew_write(kseq_t *seq, bool is_fastq, FILE *fp_o)
 {
     if (is_fastq)
     {
-        fprintf(sfp_o, "@%s %s\n", seq->name.s, seq->comment.s);
-        fprintf(sfp_o, "%s\n", seq->seq.s);
-        fprintf(sfp_o, "+\n");
-        fprintf(sfp_o, "%s\n", seq->qual.s);
+        fprintf(fp_o, "@%s %s\n", seq->name.s, seq->comment.s);
+        fprintf(fp_o, "%s\n", seq->seq.s);
+        fprintf(fp_o, "+\n");
+        fprintf(fp_o, "%s\n", seq->qual.s);
     }
     else
     {
-        fprintf(sfp_o, ">%s\n", seq->name.s);
-        fprintf(sfp_o, "%s\n", seq->seq.s);
+        fprintf(fp_o, ">%s\n", seq->name.s);
+        fprintf(fp_o, "%s\n", seq->seq.s);
     }
 }
 
