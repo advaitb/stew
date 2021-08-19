@@ -5,16 +5,18 @@
 #include <kseq.h>
 #include <ascii.h>
 
+
 #include <hll.h>
 #include <hll_private.h>
 #include <city.h>
+#include <zlib.h>
 
 #define FILE_LOG_LEVEL 0
 #define CONSOLE_LOG_LEVEL 2
 #define LOG_FILE "stew.log"
 #define _VERSION_ "0.1.0"
 
-KSEQ_INIT(FILE*, read);
+KSEQ_INIT(gzFile , gzread);
 
 
 static ko_longopt_t main_longopts[] = {
@@ -32,6 +34,24 @@ void log_setup(const char* fname, int f_log_lvl, int c_log_lvl)
     log_set_level(c_log_lvl);
     FILE *lfp = fopen(fname,"w+");
     log_add_fp(lfp,f_log_lvl);
+}
+
+void stew_write_se(kseq_t *seq, bool is_fastq, FILE *sfp_o)
+{
+    if (is_fastq)
+    {
+        fprintf(sfp_o, "@%s %s\n", seq->name.s, seq->comment.s);
+        fprintf(sfp_o, "%s\n", seq->seq.s);
+        fprintf(sfp_o, "+\n");
+        fprintf(sfp_o, "%s\n", seq->qual.s);
+    }
+    else
+    {
+        fprintf(sfp_o, ">%s\n", seq->name.s);
+        fprintf(sfp_o, "%s\n", seq->seq.s);
+    }
+
+
 }
 
 int main(int argc, char *argv[])
@@ -77,7 +97,7 @@ int main(int argc, char *argv[])
     ketopt_t om = KETOPT_INIT, os = KETOPT_INIT;
     int i, j, c;
     char *sf[2], *pf[4], *params;
-    int t, p, cps, k = 23;
+    int t = 1, p = 10, cps = 16, k = 23;
     while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:v", main_longopts)) >= 0)
     {
         if (c == 't')
@@ -117,11 +137,12 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+
     // reset args
     t = t > omp_get_max_threads() ? omp_get_max_threads() : t;
     p = p > 50 ? 50 : p;
-    k = k > 100 ? 100 : k;
     cps = (cps < 4 || cps > 16) ? 16 : cps;
+    k = k > 100 ? 100 : k;
 
     log_info(ascii_art);
     log_info("Preparing stew!...");
@@ -192,25 +213,41 @@ int main(int argc, char *argv[])
     if (!strcmp(sub,"S"))
     {
         int l;
-        FILE *fp = fopen(sf[0], "r");
-        if (!fp)
+        gzFile *sfp = gzopen(sf[0], "r");
+        FILE *sfp_o = fopen(sf[1],"w+");
+        if (!sfp)
         {
             log_error("Couldn't open file");
             return 1;
         }
-        kseq_t *seq = kseq_init(fp);
+        kseq_t *seq = kseq_init(sfp);
         while ((l = kseq_read(seq)) >= 0)
         {
-            printf("name: %s\n", seq->name.s);
-            if (seq->comment.l) printf("comment: %s\n", seq->comment.s);
-            printf("seq: %s\n", seq->seq.s);
-            if (seq->qual.l) printf("qual: %s\n", seq->qual.s);
-        }
-        printf("return value: %d\n", l);
-        kseq_destroy(seq); // STEP 5: destroy seq
-        fclose(fp); // STEP 6: close the file handler
+            bool is_fastq = false;
+            if (seq->qual.l && seq->comment.l) is_fastq = true;
 
+            int _nk = seq->seq.l - k + 1 / p;
+            int _throw = (seq->seq.l - k + 1) % p;
+            int _effl = seq->seq.l - k + 1 - _throw;
+
+            
+
+            //if (_nk > 10e10 || _nk <= p)
+            //{
+            //    stew_write_se(seq, is_fastq, sfp_o);
+            //}
+
+            //fprintf(stdout,"%.2f\n", _nk);
+            //fprintf(stdout,"name: %s\n", seq->name.s);
+            //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
+            //fprintf(stderr,"seq: %s\n", seq->seq.s);
+            //if (seq->qual.l) fprintf(stderr,"qual: %s\n", seq->qual.s);
+        }
+        kseq_destroy(seq);
+        gzclose(sfp);
+        fclose(sfp_o);
     }
+
 
     for (int i = 0; i < p; i++)
     {
