@@ -140,6 +140,9 @@ int main(int argc, char *argv[])
     cps = (cps < 4 || cps > 16) ? 16 : cps;
     k = k > 100 ? 100 : k;
 
+    // set threads
+    omp_set_num_threads(t);
+
     log_info(ascii_art);
     log_info("Preparing stew!...");
 
@@ -155,7 +158,7 @@ int main(int argc, char *argv[])
 
         for (i = os.ind + om.ind, j = 0; i < argc; ++i, ++j)
         {
-            sf[j] = malloc(strlen(argv[i]) + 1);
+            sf[j] = (char *)malloc(strlen(argv[i]) + 1);
             strcpy(sf[j],argv[i]);
         }
         params = "Stew params:\n"
@@ -179,7 +182,7 @@ int main(int argc, char *argv[])
         }
         for (i = os.ind + om.ind, j = 0; i < argc; ++i, ++j)
         {
-            pf[j] = malloc(strlen(argv[i]) + 1);
+            pf[j] = (char *)malloc(strlen(argv[i]) + 1);
             strcpy(pf[j],argv[i]);
         }
         params = "Stew params:\n"
@@ -199,6 +202,8 @@ int main(int argc, char *argv[])
 
     // create hll arrays
     hll_t *hll[p];
+
+    #pragma omp parallel for
     for (int i = 0; i < p; i++)
     {
         hll[i] = hll_create(c);
@@ -226,25 +231,33 @@ int main(int argc, char *argv[])
             bool is_fastq = false;
             if (seq->qual.l && seq->comment.l) is_fastq = true;
 
-            int _nk = seq->seq.l - k + 1 / p;
-            int _throw = (seq->seq.l - k + 1) % p;
-            int _effl = seq->seq.l - k + 1 - _throw;
+            int _nk = (seq->seq.l - k + 1) / p; // kmer per bucket
+            int _throw = (seq->seq.l - k + 1) % p; // extra kmers
+            int _effk = seq->seq.l - k + 1 - _throw; // effective kmers
 
-            /* TODO */
+            int _p = -1;
+            for (int _s = 0; _s < _effk; _s++)
+            {
+                char *kmer = (char *)malloc(sizeof(char)*k);
+                strncpy(kmer,seq->seq.s+_s,k);
+                if (!(_s % _nk)) _p++;
+                hll_add(hll[_p], kmer, k);
+            }
 
             for (int i = 0; i < p; i++)
             {
+
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
+                //fprintf(stderr, "%d", curr_cnt[i]-prev_cnt[i]);
             }
-
-            /* TODO */
 
             for (int i = 0; i < p; i++)
             {
                 prev_cnt[i] = curr_cnt[i];
             }
+            fprintf(stderr,"\n\n\n");
 
             //fprintf(stdout,"name: %s\n", seq->name.s);
             //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
@@ -254,6 +267,9 @@ int main(int argc, char *argv[])
         kseq_destroy(seq);
         gzclose(sfp);
         fclose(sfp_o);
+
+        free(prev_cnt);
+        free(curr_cnt);
     }
 
 
@@ -261,6 +277,7 @@ int main(int argc, char *argv[])
     {
             hll_release(hll[i]);
     }
+
 
     log_debug("Cups and Platters emptied successfully!...");
 
