@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < p; i++)
     {
-        hll[i] = hll_create(c);
+        hll[i] = hll_create(cps);
     }
 
     log_info("Cups and Platters are ready!...");
@@ -224,6 +224,7 @@ int main(int argc, char *argv[])
         int *curr_cnt = (int *)calloc(p, sizeof(int));
 
         kseq_t *seq = kseq_init(sfp);
+        int max_nk = 0, corr = 0;
         while ((l = kseq_read(seq)) >= 0)
         {
             bool is_fastq = false;
@@ -233,36 +234,38 @@ int main(int argc, char *argv[])
             int _throw = (seq->seq.l - k + 1) % p; // extra kmers
             int _effk = seq->seq.l - k + 1 - _throw; // effective kmers
 
+
+            if (_nk < max_nk)
+            {
+                corr = max_nk - _nk;
+            }
+            else
+            {
+                max_nk = _nk;
+                corr = 0;
+            }
+
             int _p = -1;
+
             for (int _s = 0; _s < _effk; _s++)
             {
-                char *kmer = (char *)malloc(sizeof(char)*k+1);
+                char *kmer = (char *)malloc(sizeof(char)*k);
                 strncpy(kmer, seq->seq.s+_s, k);
-                kmer[k] = '\0';
-                fprintf(stderr,"%c\n", kmer[k-1]);
                 if (!(_s % _nk)) _p++;
-                //char *test = "ADBCCAAFOTNFNGFFHHJYRFA";
                 hll_add(hll[_p], kmer, k);
             }
 
+            #pragma omp parallel for
             for (int i = 0; i < p; i++)
             {
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
-                //fprintf(stderr, "%d\n", curr_cnt[i]-prev_cnt[i]);
-            }
-
-            for (int i = 0; i < p; i++)
-            {
+                //fprintf(stderr,"%d\n", curr_cnt[i] - prev_cnt[i] + corr);
                 prev_cnt[i] = curr_cnt[i];
             }
 
-            //fprintf(stdout,"name: %s\n", seq->name.s);
-            //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
-            //fprintf(stderr,"seq: %s\n", seq->seq.s);
-            //if (seq->qual.l) fprintf(stderr,"qual: %s\n", seq->qual.s);
-            break;
+
         }
         kseq_destroy(seq);
         gzclose(sfp);
@@ -280,6 +283,5 @@ int main(int argc, char *argv[])
 
 
     log_info("Cups and Platters emptied successfully!...");
-
     return 0;
 }
