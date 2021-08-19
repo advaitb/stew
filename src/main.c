@@ -89,10 +89,6 @@ int main(int argc, char *argv[])
     // set logging
     log_setup(LOG_FILE, FILE_LOG_LEVEL, CONSOLE_LOG_LEVEL);
 
-    // get threads in system
-    //int t = omp_get_max_threads();
-    //log_trace("Num threads available %d",t);
-
     // argument parsing
     ketopt_t om = KETOPT_INIT, os = KETOPT_INIT;
     int i, j, c;
@@ -220,6 +216,10 @@ int main(int argc, char *argv[])
             log_error("Couldn't open file");
             return 1;
         }
+
+        int *prev_cnt = (int *)calloc(p, sizeof(int));
+        int *curr_cnt = (int *)calloc(p, sizeof(int));
+
         kseq_t *seq = kseq_init(sfp);
         while ((l = kseq_read(seq)) >= 0)
         {
@@ -230,14 +230,22 @@ int main(int argc, char *argv[])
             int _throw = (seq->seq.l - k + 1) % p;
             int _effl = seq->seq.l - k + 1 - _throw;
 
-            
+            /* TODO */
 
-            //if (_nk > 10e10 || _nk <= p)
-            //{
-            //    stew_write_se(seq, is_fastq, sfp_o);
-            //}
+            for (int i = 0; i < p; i++)
+            {
+                hll_estimate_t estimate;
+                hll_get_estimate(hll[i], &estimate);
+                curr_cnt[i] = estimate.estimate;
+            }
 
-            //fprintf(stdout,"%.2f\n", _nk);
+            /* TODO */
+
+            for (int i = 0; i < p; i++)
+            {
+                prev_cnt[i] = curr_cnt[i];
+            }
+
             //fprintf(stdout,"name: %s\n", seq->name.s);
             //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
             //fprintf(stderr,"seq: %s\n", seq->seq.s);
