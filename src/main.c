@@ -50,7 +50,28 @@ void stew_write_se(kseq_t *seq, bool is_fastq, FILE *sfp_o)
         fprintf(sfp_o, ">%s\n", seq->name.s);
         fprintf(sfp_o, "%s\n", seq->seq.s);
     }
+}
 
+void stew_write_pe(kseq_t *seq1, kseq_t *seq2, bool is_fastq, FILE *pfp1_o, FILE *pfp2_o)
+{
+    if (is_fastq)
+    {
+        fprintf(pfp1_o, "@%s %s\n", seq1->name.s, seq1->comment.s);
+        fprintf(pfp1_o, "%s\n", seq1->seq1.s);
+        fprintf(pfp1_o, "+\n");
+        fprintf(pfp1_o, "%s\n", seq1->qual.s);
+        fprintf(pfp2_o, "@%s %s\n", seq2->name.s, seq2->comment.s);
+        fprintf(pfp2_o, "%s\n", seq2->seq2.s);
+        fprintf(pfp2_o, "+\n");
+        fprintf(pfp2_o, "%s\n", seq2->qual.s);
+    }
+    else
+    {
+        fprintf(pfp1_o, "@%s %s\n", seq1->name.s, seq1->comment.s);
+        fprintf(pfp1_o, "%s\n", seq1->seq1.s);
+        fprintf(pfp2_o, "@%s %s\n", seq2->name.s, seq2->comment.s);
+        fprintf(pfp2_o, "%s\n", seq2->seq2.s);
+    }
 
 }
 
@@ -237,9 +258,12 @@ int main(int argc, char *argv[])
             int _p = -1;
             for (int _s = 0; _s < _effk; _s++)
             {
-                char *kmer = (char *)malloc(sizeof(char)*k);
+                char *kmer = (char *)malloc(sizeof(char)*k+1);
                 strncpy(kmer, seq->seq.s+_s, k);
+                kmer[k] = '\0';
+                fprintf(stderr,"%s\n", kmer);
                 if (!(_s % _nk)) _p++;
+                //char *test = "ADBCCAAFOTNFNGFFHHJYRFA";
                 hll_add(hll[_p], kmer, k);
             }
 
@@ -248,6 +272,7 @@ int main(int argc, char *argv[])
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
+                //fprintf(stderr, "%d\n", curr_cnt[i]-prev_cnt[i]);
             }
 
             for (int i = 0; i < p; i++)
@@ -259,6 +284,7 @@ int main(int argc, char *argv[])
             //if (seq->comment.l) fprintf(stderr,"comment: %s\n", seq->comment.s);
             //fprintf(stderr,"seq: %s\n", seq->seq.s);
             //if (seq->qual.l) fprintf(stderr,"qual: %s\n", seq->qual.s);
+            break;
         }
         kseq_destroy(seq);
         gzclose(sfp);
@@ -276,6 +302,6 @@ int main(int argc, char *argv[])
 
 
     log_info("Cups and Platters emptied successfully!...");
-    
+
     return 0;
 }
