@@ -8,7 +8,6 @@
 
 #include <hll.h>
 #include <hll_private.h>
-#include <city.h>
 #include <zlib.h>
 
 #define FILE_LOG_LEVEL 0
@@ -24,6 +23,8 @@ static ko_longopt_t main_longopts[] = {
         { "platters", ko_required_argument, 'p' },
         { "cups", ko_required_argument, 'c'},
         { "kmers", ko_required_argument, 'k' },
+        {"threshold", ko_required_argument, 'x'},
+        {"momentum", ko_required_argument, 'm'},
         { "version", ko_no_argument, 'v'},
         { NULL, 0, 0 }
 };
@@ -76,6 +77,10 @@ int main(int argc, char *argv[])
                   "\t-c (--cups) - Number of cups (bits) in each HLL platter (array) "
                   "[Default: 16, Min: 4, Max: 16]\n"
                   "\t-k (--kmers) - Kmer size [Default: 23, Max: 100]\n"
+                  "\t-x (--threshold) - Threshold for similarity "
+                  "[Default: 0.5, Min: 0 (least selective), Max: 1 (most selective)]\n"
+                  "\t-m (--momentum) - Momentum applied to boost score (Useful in bigger "
+                  "datasets) [Default: 0.001, Max 0.1]\n"
                   "\t-v (--version) - Print version\n"
                   "\n"
                   "Subcommand postitional options:\n"
@@ -93,6 +98,7 @@ int main(int argc, char *argv[])
     int i, j, c;
     char *sf[2], *pf[4], *params;
     int t = 1, p = 10, cps = 16, k = 23;
+    float x = 0.5, m = 0.001;
     while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:v", main_longopts)) >= 0)
     {
         if (c == 't')
@@ -101,14 +107,23 @@ int main(int argc, char *argv[])
         }
         else if (c == 'p')
         {
-            p = om.arg ? atoi(om.arg): 10;
+            p = om.arg ? atoi(om.arg) : 10;
         }
         else if (c == 'c')
         {
             cps = om.arg ? atoi(om.arg) : 16;
         }
-        else if (c == 'k') {
-            k = om.arg ? atoi(om.arg): 23;
+        else if (c == 'k')
+        {
+            k = om.arg ? atoi(om.arg) : 23;
+        }
+        else if (c == 'x')
+        {
+            x = om.arg ? atof(om.arg) : 0.5;
+        }
+        else if (c == 'm')
+        {
+            m  = om.arg ? atof(om.arg) : 0.001;
         }
         else if (c == 'v')
         {
@@ -134,13 +149,18 @@ int main(int argc, char *argv[])
 
 
     // reset args
-    t = t > omp_get_max_threads() ? omp_get_max_threads() : t;
-    p = p > 50 ? 50 : p;
-    cps = (cps < 4 || cps > 16) ? 16 : cps;
-    k = k > 100 ? 100 : k;
+    t = (t > omp_get_max_threads()  || t <= 0) ?
+    log_warn("Threads out of bounds, setting threads to maximum available"),
+    omp_get_max_threads() : t;
+    p = p > 50 ? log_warn("Platters more than allowed, setting to 50"), 50 : p;
+    cps = (cps < 4 || cps > 16) ? log_warn("Cups out of bounds, setting to 16"), 16 : cps;
+    k = ( k > 100 || k <= 0) ? log_warn("Kmers out of bound, setting to 100"), 100 : k;
+    x = (x > 1 || x < 0) ?
+            log_warn("Threshold out of bounds, all sequences will be preserved!"), 0 : x;
+    m = (m > 0.1) ? log_warn("Momentum out of bounds, setting to 0.001"), 0.001 : m;
 
     // set threads
-    omp_set_num_threads(t);
+    //omp_set_num_threads(t);
 
     log_info(ascii_art);
     log_info("Preparing stew!...");
@@ -209,6 +229,7 @@ int main(int argc, char *argv[])
 
     log_info("Cups and Platters are ready!...");
 
+    int count = 1, sel_count = 0;
     if (!strcmp(sub,"S"))
     {
         int l;
@@ -222,13 +243,18 @@ int main(int argc, char *argv[])
 
         int *prev_cnt = (int *)calloc(p, sizeof(int));
         int *curr_cnt = (int *)calloc(p, sizeof(int));
+        int *avg = (int *)calloc(p, sizeof(int));
+
 
         kseq_t *seq = kseq_init(sfp);
-        int max_nk = 0, corr = 0;
+        int max_nk = 0, corr = 0, diff_cnt = 0;
+        float corr_cnt = 0.0;
         while ((l = kseq_read(seq)) >= 0)
         {
             bool is_fastq = false;
             if (seq->qual.l && seq->comment.l) is_fastq = true;
+            float score = 0.0;
+            long sum_curr = 0;
 
             int _nk = (seq->seq.l - k + 1) / p; // kmer per bucket
             int _throw = (seq->seq.l - k + 1) % p; // extra kmers
@@ -255,17 +281,29 @@ int main(int argc, char *argv[])
                 hll_add(hll[_p], kmer, k);
             }
 
-            #pragma omp parallel for
+            #pragma omp parallel for num_threads(t)
             for (int i = 0; i < p; i++)
             {
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
-                //fprintf(stderr,"%d\n", curr_cnt[i] - prev_cnt[i] + corr);
+                diff_cnt = curr_cnt[i] - prev_cnt[i];
+                corr_cnt  = diff_cnt + corr + x*(avg[i]+m*count);
+                avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
+                score += (corr_cnt / _nk)*curr_cnt[i];
+                sum_curr += curr_cnt[i];
                 prev_cnt[i] = curr_cnt[i];
             }
 
+            score /= sum_curr;
 
+            if (score > x)
+            {
+                sel_count++;
+                stew_write(seq,is_fastq,sfp_o);
+            }
+
+            count++;
         }
         kseq_destroy(seq);
         gzclose(sfp);
@@ -273,15 +311,16 @@ int main(int argc, char *argv[])
 
         free(prev_cnt);
         free(curr_cnt);
+        free(avg);
     }
-
 
     for (int i = 0; i < p; i++)
     {
             hll_release(hll[i]);
     }
 
+    log_info("Selected %d out of %d sequences!..", sel_count, --count);
+    log_info("Piping hot Stew served! Bon appetit!...");
 
-    log_info("Cups and Platters emptied successfully!...");
     return 0;
 }
