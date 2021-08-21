@@ -7,7 +7,9 @@ Create a nice stew of your reads!
 
 ### Installation:
 
-[] Source:
+* Source:
+	```git clone ```
+	```
 
 ```
 Usage: stew [Subcommand] [options] [input.*|input1.*|input2.*] [out.*...]
