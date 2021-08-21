@@ -15,6 +15,7 @@ Create a nice stew of your reads!
 	make 
 	```   
 
+### Parameters:
 ```
 Usage: stew [Subcommand] [options] [input.*|input1.*|input2.*] [out.*...]
 Subcommands:
