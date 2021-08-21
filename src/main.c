@@ -17,7 +17,7 @@
 
 KSEQ_INIT(gzFile , gzread);
 
-
+// longopts params
 static ko_longopt_t main_longopts[] = {
         { "threads", ko_required_argument, 't' },
         { "platters", ko_required_argument, 'p' },
@@ -29,7 +29,7 @@ static ko_longopt_t main_longopts[] = {
         { NULL, 0, 0 }
 };
 
-
+// log params and setup
 void log_setup(const char* fname, int f_log_lvl, int c_log_lvl)
 {
     log_set_level(c_log_lvl);
@@ -37,6 +37,7 @@ void log_setup(const char* fname, int f_log_lvl, int c_log_lvl)
     log_add_fp(lfp,f_log_lvl);
 }
 
+// write the output
 void stew_write(kseq_t *seq, bool is_fastq, FILE *fp_o)
 {
     if (is_fastq)
@@ -139,6 +140,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // check subcommand
     char *sub = argv[om.ind];
     if (strcmp(sub,"S") && strcmp(sub,"P"))
     {
@@ -261,19 +263,18 @@ int main(int argc, char *argv[])
             int _effk = seq->seq.l - k + 1 - _throw; // effective kmers
 
 
-            if (_nk < max_nk)
+            if (_nk < max_nk) // is this the largest number of kmers?
             {
-                corr = max_nk - _nk;
+                corr = max_nk - _nk; // no? apply corrections
             }
             else
             {
-                max_nk = _nk;
-                corr = 0;
+                max_nk = _nk; // yes? assign max
+                corr = 0; // no correction needed
             }
 
             int _p = -1;
-
-            for (int _s = 0; _s < _effk; _s++)
+            for (int _s = 0; _s < _effk; _s++) // kmerize and add to HLL
             {
                 char *kmer = (char *)malloc(sizeof(char)*k);
                 strncpy(kmer, seq->seq.s+_s, k);
@@ -282,29 +283,31 @@ int main(int argc, char *argv[])
             }
 
             #pragma omp parallel for num_threads(t)
-            for (int i = 0; i < p; i++)
+            for (int i = 0; i < p; i++) // estimate the count and calculate the uniqueness score
             {
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
-                corr_cnt  = diff_cnt + corr + x*(avg[i]+m*count);
+                corr_cnt  = diff_cnt + corr + x*(avg[i]+m*count); // corrections added to unique kmers
                 avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
                 score += (corr_cnt / _nk)*curr_cnt[i];
                 sum_curr += curr_cnt[i];
                 prev_cnt[i] = curr_cnt[i];
             }
 
-            score /= sum_curr;
+            score /= sum_curr; // normalize
 
-            if (score > x)
+            if (score > x) // yup! we need this sequence.
             {
                 sel_count++;
-                stew_write(seq,is_fastq,sfp_o);
+                stew_write(seq,is_fastq,sfp_o); // write this
             }
 
             count++;
         }
+            
+        // clean up
         kseq_destroy(seq);
         gzclose(sfp);
         fclose(sfp_o);
@@ -314,11 +317,13 @@ int main(int argc, char *argv[])
         free(avg);
     }
 
+    // release HLL allocs
     for (int i = 0; i < p; i++)
     {
             hll_release(hll[i]);
     }
 
+    // that's all folks!
     log_info("Selected %d out of %d sequences!..", sel_count, --count);
     log_info("Piping hot Stew served! Bon appetit!...");
 
