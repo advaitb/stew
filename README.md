@@ -2,7 +2,7 @@
 Create a nice stew of your reads!
 
 
-**stew** uses HyperLogLog arrays for divesity sampling.
+**stew** uses HyperLogLog arrays for diversity sampling.
 
 ```
 Usage: stew [Subcommand] [options] [input.*|input1.*|input2.*] [out.*...]
