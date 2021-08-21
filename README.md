@@ -8,10 +8,10 @@ Create a nice stew of your reads!
 ### Installation:
 
 * Source:    
-	```git clone https://github.com/advaitb/stew.git ```
-	``` cd stew ```
-	``` cmake -DCMAKE_BUILD_TYPE=Release ```
-	``` make ```
+	```git clone https://github.com/advaitb/stew.git ```   
+	``` cd stew ```    
+	``` cmake -DCMAKE_BUILD_TYPE=Release ```   
+	``` make ```   
 
 ```
 Usage: stew [Subcommand] [options] [input.*|input1.*|input2.*] [out.*...]
