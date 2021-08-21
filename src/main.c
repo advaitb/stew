@@ -65,7 +65,7 @@ int main(int argc, char *argv[])
                   "\nDeveloper: Advait Balaji (advait@rice.edu)\n"
                   "\n"
                   "***Diversify and subsample reads into a stew!***\n"
-                  "\n\nUsage stew [Subcommand] [options] [input.*|input1.*|input2.*] "
+                  "\n\nUsage: stew [Subcommand] [options] [input.*|input1.*|input2.*] "
                   "[out.*...]\n"
                   "Subcommands:\n"
                   "\tS - Single end read mode\n"
