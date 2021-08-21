@@ -23,7 +23,7 @@ static ko_longopt_t main_longopts[] = {
         { "platters", ko_required_argument, 'p' },
         { "cups", ko_required_argument, 'c' },
         { "kmers", ko_required_argument, 'k' },
-        { "threshold", ko_required_argument, 'x' },
+        { "select", ko_required_argument, 'x' },
         { "momentum", ko_required_argument, 'm' },
         { "version", ko_no_argument, 'v' },
         { NULL, 0, 0 }
@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
                   "\t-c (--cups) - Number of cups (bits) in each HLL platter (array) "
                   "[Default: 8, Min: 4, Max: 16]\n"
                   "\t-k (--kmers) - Kmer size [Default: 23, Max: 100]\n"
-                  "\t-x (--threshold) - Threshold for similarity "
+                  "\t-x (--select) - Selectivity for similarity "
                   "[Default: 0.5, Min: 0 (least selective), Max: 1 (most selective)]\n"
                   "\t-m (--momentum) - Momentum applied to boost score (Useful in bigger "
                   "datasets) [Default: 0.000001, Max 0.001]\n"
@@ -158,7 +158,7 @@ int main(int argc, char *argv[])
     cps = (cps < 4 || cps > 16) ? log_warn("Cups out of bounds, setting to 8"), 8 : cps;
     k = ( k > 100 || k <= 0) ? log_warn("Kmers out of bound, setting to 100"), 100 : k;
     x = (x > 1 || x < 0) ?
-            log_warn("Threshold out of bounds, all sequences will be preserved!"), 0 : x;
+            log_warn("Selectivity out of bounds, all sequences will be preserved!"), 0 : x;
     m = (m > 0.001) ? log_warn("Momentum out of bounds, setting to 0.001"), 0.001 : m;
 
     // set threads
@@ -249,7 +249,7 @@ int main(int argc, char *argv[])
 
 
         kseq_t *seq = kseq_init(sfp);
-        int max_nk = 0, corr = 0, diff_cnt = 0;
+        int max_nk = 0, diff_cnt = 0;
         float corr_cnt = 0.0;
 
         log_debug("Reading the recipe!...");
@@ -260,7 +260,7 @@ int main(int argc, char *argv[])
             if (seq->qual.l && seq->comment.l) is_fastq = true;
             float score = 0.0;
             long sum_curr = 0;
-
+            int corr = 0;
             int _nk = (seq->seq.l - k + 1) / p; // kmer per bucket
             int _throw = (seq->seq.l - k + 1) % p; // extra kmers
             int _effk = seq->seq.l - k + 1 - _throw; // effective kmers
@@ -273,7 +273,6 @@ int main(int argc, char *argv[])
             else
             {
                 max_nk = _nk; // yes? assign max
-                corr = 0; // no correction needed
             }
 
             int _p = -1;
@@ -301,10 +300,10 @@ int main(int argc, char *argv[])
             for (int i = 0; i < p; i++)
             {
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
-                corr_cnt  = diff_cnt + (1-x)*(corr+x*avg[i]+m*count);
+                corr_cnt  = diff_cnt + (1-x)*(corr+(1-x)*avg[i]+m*count);
                 // corrections added to unique kmers
                 avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
-                score += (corr_cnt / _nk)*curr_cnt[i];
+                score += (corr_cnt / _nk) * curr_cnt[i];
                 sum_curr += curr_cnt[i];
                 prev_cnt[i] = curr_cnt[i];
             }
