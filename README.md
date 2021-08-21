@@ -4,6 +4,11 @@ Create a nice stew of your reads!
 
 **stew** uses HyperLogLog arrays for diversity sampling.
 
+
+### Installation:
+
+[] Source:
+
 ```
 Usage: stew [Subcommand] [options] [input.*|input1.*|input2.*] [out.*...]
 Subcommands:
