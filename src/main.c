@@ -25,6 +25,7 @@ static ko_longopt_t main_longopts[] = {
         { "kmers", ko_required_argument, 'k' },
         { "select", ko_required_argument, 'x' },
         { "momentum", ko_required_argument, 'm' },
+        { "help", ko_no_argument, 'h' },
         { "version", ko_no_argument, 'v' },
         { NULL, 0, 0 }
 };
@@ -54,7 +55,6 @@ void stew_write(kseq_t *seq, bool is_fastq, FILE *fp_o)
     }
 }
 
-
 int main(int argc, char *argv[])
 {
 
@@ -82,6 +82,7 @@ int main(int argc, char *argv[])
                   "[Default: 0.5, Min: 0 (least selective), Max: 1 (most selective)]\n"
                   "\t-m (--momentum) - Momentum applied to boost score (Useful in bigger "
                   "datasets) [Default: 0.000001, Max 0.001]\n"
+                  "\t-h (--help) - Print usage\n"
                   "\t-v (--version) - Print version\n"
                   "\n"
                   "Subcommand postitional options:\n"
@@ -100,7 +101,7 @@ int main(int argc, char *argv[])
     char *sf[2], *pf[4], *params;
     int t = 1, p = 10, cps = 16, k = 23;
     float x = 0.5, m = 0.000001;
-    while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:x:m:v", main_longopts)) >= 0)
+    while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:x:m:vh", main_longopts)) >= 0)
     {
         if (c == 't')
         {
@@ -129,6 +130,11 @@ int main(int argc, char *argv[])
         else if (c == 'v')
         {
             log_info("stew version: %s", _VERSION_);
+            return 0;
+        }
+        else if (c == 'h')
+        {
+            log_info("%s",usage);
             return 0;
         }
     }
@@ -160,9 +166,6 @@ int main(int argc, char *argv[])
     x = (x > 1 || x < 0) ?
             log_warn("Selectivity out of bounds, all sequences will be preserved!"), 0 : x;
     m = (m > 0.001) ? log_warn("Momentum out of bounds, setting to 0.001"), 0.001 : m;
-
-    // set threads
-    //omp_set_num_threads(t);
 
     log_info(ascii_art);
     log_info("Preparing stew!...");
@@ -286,7 +289,6 @@ int main(int argc, char *argv[])
                 hll_add(hll[_p], kmer, k);
             }
 
-            //#pragma omp parallel for num_threads(t)
             for (int i = 0; i < p; i++) // estimate the count and calculate the uniqueness score
             {
                 hll_estimate_t estimate;
@@ -296,7 +298,6 @@ int main(int argc, char *argv[])
 
             // split loop - may lead to lesser cache misses
 
-            //#pragma omp parallel for num_threads(t)
             for (int i = 0; i < p; i++)
             {
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
@@ -323,6 +324,107 @@ int main(int argc, char *argv[])
         kseq_destroy(seq);
         gzclose(sfp);
         fclose(sfp_o);
+
+        free(prev_cnt);
+        free(curr_cnt);
+        free(avg);
+    }
+    else
+    {
+        int l1, l2;
+        gzFile *pfp1 = gzopen(pf[0], "r");
+        gzFile *pfp2 = gzopen(pf[1], "r");
+        FILE *pfp_o1 = fopen(pf[2], "w+");
+        FILE *pfp_o2 = fopen(pf[3], "w+");
+
+        if ((!pfp1) || (!pfp2))
+        {
+            log_error("Couldn't open file(s)");
+            return 1;
+        }
+
+        int *prev_cnt = (int *)calloc(p, sizeof(int));
+        int *curr_cnt = (int *)calloc(p, sizeof(int));
+        int *avg = (int *)calloc(p, sizeof(int));
+
+
+        kseq_t *seq1 = kseq_init(pfp1);
+        kseq_t *seq2 = kseq_init(pfp2);
+        int max_nk = 0, diff_cnt = 0;
+        float corr_cnt = 0.0;
+
+        log_debug("Reading the recipe!...");
+
+        while (((l1 = kseq_read(seq1)) >= 0) && ((l2 = kseq_read(seq2)) >=0))
+        {
+            bool is_fastq = false;
+            if (seq1->qual.l && seq1->comment.l) is_fastq = true;
+            float score = 0.0;
+            long sum_curr = 0;
+            int corr = 0;
+            int _nk = (seq1->seq.l - k + 1) / p; // kmer per bucket
+            int _throw = (seq1->seq.l - k + 1) % p; // extra kmers
+            int _effk = seq1->seq.l - k + 1 - _throw; // effective kmers
+
+
+            if (_nk < max_nk) // is this the largest number of kmers?
+            {
+                corr = max_nk - _nk; // no? apply corrections
+            }
+            else
+            {
+                max_nk = _nk; // yes? assign max
+            }
+
+            int _p = -1;
+            char *kmer = (char *)malloc(sizeof(char)*k);
+
+
+            for (int _s = 0; _s < _effk; _s++) // kmerize and add to HLL
+            {
+                if (!(_s % _nk)) _p++;
+                strncpy(kmer, seq1->seq.s+_s, k);
+                hll_add(hll[_p], kmer, k);
+            }
+
+            for (int i = 0; i < p; i++) // estimate the count and calculate the uniqueness score
+            {
+                hll_estimate_t estimate;
+                hll_get_estimate(hll[i], &estimate);
+                curr_cnt[i] = estimate.estimate;
+            }
+
+            // split loop - may lead to lesser cache misses
+            for (int i = 0; i < p; i++)
+            {
+                diff_cnt = curr_cnt[i] - prev_cnt[i];
+                corr_cnt  = diff_cnt + (1-x)*(corr+(1-x)*avg[i]+m*count);
+                // corrections added to unique kmers
+                avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
+                score += (corr_cnt / _nk) * curr_cnt[i];
+                sum_curr += curr_cnt[i];
+                prev_cnt[i] = curr_cnt[i];
+            }
+
+            score /= sum_curr; // normalize
+
+            if (score > x) // yup! we need this sequence.
+            {
+                sel_count++;
+                stew_write(seq1, is_fastq, pfp_o1); // write this
+                stew_write(seq2, is_fastq, pfp_o2); // write this
+            }
+            count++;
+        }
+        log_debug("Finished processing the recipe!...");
+
+        // clean up
+        kseq_destroy(seq1);
+        kseq_destroy(seq2);
+        gzclose(pfp1);
+        gzclose(pfp2);
+        fclose(pfp_o1);
+        fclose(pfp_o2);
 
         free(prev_cnt);
         free(curr_cnt);
