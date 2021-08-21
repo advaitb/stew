@@ -21,11 +21,11 @@ KSEQ_INIT(gzFile , gzread);
 static ko_longopt_t main_longopts[] = {
         { "threads", ko_required_argument, 't' },
         { "platters", ko_required_argument, 'p' },
-        { "cups", ko_required_argument, 'c'},
+        { "cups", ko_required_argument, 'c' },
         { "kmers", ko_required_argument, 'k' },
-        {"threshold", ko_required_argument, 'x'},
-        {"momentum", ko_required_argument, 'm'},
-        { "version", ko_no_argument, 'v'},
+        { "threshold", ko_required_argument, 'x' },
+        { "momentum", ko_required_argument, 'm' },
+        { "version", ko_no_argument, 'v' },
         { NULL, 0, 0 }
 };
 
@@ -76,12 +76,12 @@ int main(int argc, char *argv[])
                   "\t-p (--platters) - Number of platters (arrays) of HLL structures "
                   "[Default: 10, Max: 50]\n"
                   "\t-c (--cups) - Number of cups (bits) in each HLL platter (array) "
-                  "[Default: 16, Min: 4, Max: 16]\n"
+                  "[Default: 8, Min: 4, Max: 16]\n"
                   "\t-k (--kmers) - Kmer size [Default: 23, Max: 100]\n"
                   "\t-x (--threshold) - Threshold for similarity "
                   "[Default: 0.5, Min: 0 (least selective), Max: 1 (most selective)]\n"
                   "\t-m (--momentum) - Momentum applied to boost score (Useful in bigger "
-                  "datasets) [Default: 0.001, Max 0.1]\n"
+                  "datasets) [Default: 0.000001, Max 0.001]\n"
                   "\t-v (--version) - Print version\n"
                   "\n"
                   "Subcommand postitional options:\n"
@@ -100,7 +100,7 @@ int main(int argc, char *argv[])
     char *sf[2], *pf[4], *params;
     int t = 1, p = 10, cps = 16, k = 23;
     float x = 0.5, m = 0.001;
-    while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:v", main_longopts)) >= 0)
+    while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:x:m:v", main_longopts)) >= 0)
     {
         if (c == 't')
         {
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
         }
         else if (c == 'c')
         {
-            cps = om.arg ? atoi(om.arg) : 16;
+            cps = om.arg ? atoi(om.arg) : 8;
         }
         else if (c == 'k')
         {
@@ -124,7 +124,7 @@ int main(int argc, char *argv[])
         }
         else if (c == 'm')
         {
-            m  = om.arg ? atof(om.arg) : 0.001;
+            m  = om.arg ? atof(om.arg) : 0.000001;
         }
         else if (c == 'v')
         {
@@ -155,11 +155,11 @@ int main(int argc, char *argv[])
     log_warn("Threads out of bounds, setting threads to maximum available"),
     omp_get_max_threads() : t;
     p = p > 50 ? log_warn("Platters more than allowed, setting to 50"), 50 : p;
-    cps = (cps < 4 || cps > 16) ? log_warn("Cups out of bounds, setting to 16"), 16 : cps;
+    cps = (cps < 4 || cps > 16) ? log_warn("Cups out of bounds, setting to 8"), 8 : cps;
     k = ( k > 100 || k <= 0) ? log_warn("Kmers out of bound, setting to 100"), 100 : k;
     x = (x > 1 || x < 0) ?
             log_warn("Threshold out of bounds, all sequences will be preserved!"), 0 : x;
-    m = (m > 0.1) ? log_warn("Momentum out of bounds, setting to 0.001"), 0.001 : m;
+    m = (m > 0.001) ? log_warn("Momentum out of bounds, setting to 0.001"), 0.001 : m;
 
     // set threads
     //omp_set_num_threads(t);
@@ -251,6 +251,9 @@ int main(int argc, char *argv[])
         kseq_t *seq = kseq_init(sfp);
         int max_nk = 0, corr = 0, diff_cnt = 0;
         float corr_cnt = 0.0;
+
+        log_debug("Reading the recipe!...");
+
         while ((l = kseq_read(seq)) >= 0)
         {
             bool is_fastq = false;
@@ -274,22 +277,31 @@ int main(int argc, char *argv[])
             }
 
             int _p = -1;
+            char *kmer = (char *)malloc(sizeof(char)*k);
+
+
             for (int _s = 0; _s < _effk; _s++) // kmerize and add to HLL
             {
-                char *kmer = (char *)malloc(sizeof(char)*k);
-                strncpy(kmer, seq->seq.s+_s, k);
                 if (!(_s % _nk)) _p++;
+                strncpy(kmer, seq->seq.s+_s, k);
                 hll_add(hll[_p], kmer, k);
             }
 
-            #pragma omp parallel for num_threads(t)
+            //#pragma omp parallel for num_threads(t)
             for (int i = 0; i < p; i++) // estimate the count and calculate the uniqueness score
             {
                 hll_estimate_t estimate;
                 hll_get_estimate(hll[i], &estimate);
                 curr_cnt[i] = estimate.estimate;
+            }
+
+            // split loop - may lead to lesser cache misses
+
+            //#pragma omp parallel for num_threads(t)
+            for (int i = 0; i < p; i++)
+            {
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
-                corr_cnt  = diff_cnt + corr + x*(avg[i]+m*count); // corrections added to unique kmers
+                corr_cnt  = diff_cnt + (1-x)*(corr+m*avg[i]+m*count); // corrections added to unique kmers
                 avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
                 score += (corr_cnt / _nk)*curr_cnt[i];
                 sum_curr += curr_cnt[i];
@@ -303,10 +315,10 @@ int main(int argc, char *argv[])
                 sel_count++;
                 stew_write(seq,is_fastq,sfp_o); // write this
             }
-
             count++;
         }
-            
+        log_debug("Finished processing the recipe!...");
+
         // clean up
         kseq_destroy(seq);
         gzclose(sfp);
