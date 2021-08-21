@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
     int i, j, c;
     char *sf[2], *pf[4], *params;
     int t = 1, p = 10, cps = 16, k = 23;
-    float x = 0.5, m = 0.001;
+    float x = 0.5, m = 0.000001;
     while ((c = ketopt(&om, argc, argv, 1, "t:p:k:c:x:m:v", main_longopts)) >= 0)
     {
         if (c == 't')
@@ -301,7 +301,8 @@ int main(int argc, char *argv[])
             for (int i = 0; i < p; i++)
             {
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
-                corr_cnt  = diff_cnt + (1-x)*(corr+m*avg[i]+m*count); // corrections added to unique kmers
+                corr_cnt  = diff_cnt + (1-x)*(corr+x*avg[i]+m*count);
+                // corrections added to unique kmers
                 avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
                 score += (corr_cnt / _nk)*curr_cnt[i];
                 sum_curr += curr_cnt[i];
@@ -337,7 +338,7 @@ int main(int argc, char *argv[])
 
     // that's all folks!
     log_info("Selected %d out of %d sequences!..", sel_count, --count);
-    log_info("Piping hot Stew served! Bon appetit!...");
+    log_info("Piping hot stew served! Bon appetit!...");
 
     return 0;
 }
