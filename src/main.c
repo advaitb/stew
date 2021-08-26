@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
             for (int i = 0; i < p; i++)
             {
                 diff_cnt = curr_cnt[i] - prev_cnt[i];
-                corr_cnt  = diff_cnt + (1-x)*(corr+(1-x)*avg[i]+m*count);
+                corr_cnt  = diff_cnt + x*((corr/p)+(1-x)*avg[i]+m*count);
                 // corrections added to unique kmers
                 avg[i] = (avg[i]*(count-1) + corr_cnt) / count;
                 score += (corr_cnt / _nk) * curr_cnt[i];
